@@ -516,17 +516,7 @@ int main (int argc, char *argv [], char *env []) {
 		printf("\n");
 
 		posiciones = (int *) calloc(nProc, sizeof(int));
-		if(!posiciones) {
-
-			printf("Error en la reserva de memoria.\n");
-			exit (1);
-		}
 		estadoCaballos = (int *) calloc(nProc, sizeof(int));
-		if(!estadoCaballos) {
-
-			printf("Error en la reserva de memoria.\n");
-			exit (1);
-		}
 
 
 		while(finCarrera == FALSE) {
@@ -554,8 +544,10 @@ int main (int argc, char *argv [], char *env []) {
 
 			mostrarPosiciones(estadoCaballos, posiciones, nProc, longitud);
 		}
-		mostrarPosiciones(estadoCaballos, posiciones, nProc, longitud);
 
+		/* Liberamos memoria del padre */
+		free(posiciones);
+		free(estadoCaballos);
 	}
 	else {
 
@@ -581,6 +573,8 @@ int main (int argc, char *argv [], char *env []) {
 		write (tubHijo[i][1] ,buffer, strlen(buffer) + 1);
 		close (tubHijo[i][1]);
 	}
+
+
 	exit(0);
 }
 
