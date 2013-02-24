@@ -14,7 +14,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #define TAM 16
-#define T_ESPERA 5
+#define TIEMPO_ESPERA 5
+
 
 typedef enum {T_NORMAL = 1, T_REMONTADORA, T_GANADORA} Tirada;
 typedef enum {TIRANDO = 0, ESPERANDO, CAIDO} HorseStatus;
@@ -27,7 +28,7 @@ int sigAlarma = 0;
  * 		tirada
  * descripcion: 
  * 		se encarga de reconocer las posiciones de los caballos, para escribir en las
- * 		tunerias correspondientes el tipo de tirada que les corresponde, para despues
+ * 		tuberias correspondientes el tipo de tirada que les corresponde, para despues
  * 		mandarles una señal de comienzo
  *
  * parametros:
@@ -36,12 +37,12 @@ int sigAlarma = 0;
  * 		- tubPadre: array con las tuberias de comunicacion del padre al hijo
  * 		- tubHijo: array con las tuberias de comunicacion del hijo al padre
  * 		- nProc: numero de caballos
+ *		- estadoCaballos: array que lleva el control de los estados de los caballos
  */
 void tirada(int *posiciones, pid_t *PIDHijo, int **tubPadre,
 		int **tubHijo, int nProc, int *estadoCaballos){
 
 	int min = posiciones[0], max = 0, i;
-	int posMin = 0, posMax = 0;
 	char buffer[TAM];
 
 	/* Buscamos el primero y el ultimo. */
@@ -52,13 +53,11 @@ void tirada(int *posiciones, pid_t *PIDHijo, int **tubPadre,
 			if(posiciones[i] < min) {
 
 				min = posiciones[i];
-				posMin = i;
 			}
 
 			else if(posiciones[i] > max) {
 
 				max = posiciones[i];
-				posMax = i;
 			}
 		}
 	}
@@ -186,17 +185,18 @@ void son_closeNonUsedPipes(int **tubPadre, int **tubHijo, int nProc, int index) 
 
 	for(i = 0; i < nProc; i++) {
 
-		if(i != index) {
+		if(i == index) {
+
+			close(tubPadre[index][1]);
+			close(tubHijo[index][0]);
+		}
+		else {
 
 			close(tubPadre[i][0]);
 			close(tubPadre[i][1]);
 			close(tubHijo[i][0]);
 			close(tubHijo[i][1]);
-		}
-		else {
-
-			close(tubPadre[index][1]);
-			close(tubHijo[index][0]);
+			
 		}
 	}
 
@@ -400,22 +400,25 @@ void mostrarPosiciones(int *estadoCaballos, int *posiciones, int nProc, int meta
 	for(i = 0; i < nProc; i++)
 		if(estadoCaballos[i] != CAIDO)
 			printf("%d\t", posiciones[i]);
-		else if(posiciones[i] < meta)
+		else //if(posiciones[i] < meta)
 			printf("-\t");
 
 	return;
 }
 
+
 /*
  * funcion:
- * 		capturaUser1
+ * 		capturaSIGUSR
+
  * descripcion:
  * 		funcion encargada de que hacer tras la captura de SIGUSR1
  */
-void capturaUser1(int sennal) {
+void capturaSIGUSR(int sennal) {
 
 	return;
 }
+
 
 /*
  * funcion:
@@ -431,38 +434,68 @@ void capturaAlarma(int sennal) {
 }
 
 
+/*
+ * funcion:
+ * 		aleat_num
+ * descripcion:
+ * 		funcion que genera un numero aleatorio entre los dos introducidos
+ */
+int aleat_num(int inf, int sup) {
+   return inf+(int)((sup-inf+1.0)*rand()/(RAND_MAX+1.0));
+}
+
+
+/*
+ * funcion:
+ * 		realizarTirada
+ * descripcion:
+ * 		funcion que genera, a partir del tipo de tirada, una puntuacion aleatoria correspondiente
+ */
+int realizarTirada(tipoTirada){
+	switch(tipoTirada){
+		case T_NORMAL:
+			return aleat_num(1,6);
+			break;
+		
+		case T_REMONTADORA:
+			return aleat_num(1,6)+aleat_num(1,6);
+			break;
+
+		case T_GANADORA:
+			return aleat_num(1,7);
+			break;
+
+		default:
+			return -1;
+	}
+}
+
 
 int main (int argc, char *argv [], char *env []) {
 	
 	char buffer[TAM];
-	int nbytes, **tubPadre=NULL, **tubHijo=NULL, i, j, flag = 0;
+	int nbytes, **tubPadre=NULL, **tubHijo=NULL, i, j, tipoTirada=0, puntos=0, flag = 0;
 	int *posiciones, *estadoCaballos;
 	BOOL finCarrera = FALSE, todosResponden = FALSE;
 	pid_t *PIDHijo;
 	int nProc=0, longitud=0;
-	sigset_t mask, temp, oldMask;
+	sigset_t mask, temp, oldMask, childrenMask;
 
 	if(argc!=3){
 		printf("Numero incorrecto de argumentos.\n");
 		exit (1);
 	}
 
+	srand(time(NULL));
+
 	/* Creamos las mascaras */
 	sigemptyset(&mask);
 	sigaddset(&mask, SIGUSR1);
-	sigprocmask(SIG_SETMASK, &mask, &oldMask);
+	sigprocmask(SIG_SETMASK, &mask, &oldMask);	// mask bloqueará SIGUSR1
 
 	sigfillset(&temp);
-	sigdelset(&temp, SIGUSR1);
-	sigdelset(&temp, SIGALRM);
-
-
-	/* Determinamos la gestion de señales. */
-	if(signal(SIGUSR1, capturaUser1) == SIG_ERR) {
-
-		printf("Error en la captura.\n");
-		exit(1);
-	}
+	sigdelset(&temp, SIGUSR1);	// temp bloqueará todas las señales excepto SIGUSR1...
+	sigdelset(&temp, SIGALRM);	// ...y SIGALRM
 
 
 	nProc = atoi(argv[1]);
@@ -485,7 +518,7 @@ int main (int argc, char *argv [], char *env []) {
 
 			case 0:
 				flag = 1;
-				son_closeNonUsedPipes(tubPadre, tubHijo, nProc, i);
+				
 				break;
 
 			case -1:
@@ -501,6 +534,7 @@ int main (int argc, char *argv [], char *env []) {
 			break;
 	}
 
+	son_closeNonUsedPipes(tubPadre, tubHijo, nProc, i);
 	parent_closeNonUsedPipes(tubPadre, tubHijo, nProc);
 		
 
@@ -518,16 +552,20 @@ int main (int argc, char *argv [], char *env []) {
 		posiciones = (int *) calloc(nProc, sizeof(int));
 		estadoCaballos = (int *) calloc(nProc, sizeof(int));
 
+		if(signal(SIGUSR1, capturaSIGUSR) == SIG_ERR) {
+			printf("Error en la captura.\n");
+			exit(1);
+		}
 
 		while(finCarrera == FALSE) {
 
 			ponerEnModoTirando(estadoCaballos, nProc);
 			tirada(posiciones, PIDHijo, tubPadre, tubHijo, nProc, estadoCaballos);
-
-			alarm(T_ESPERA);
+			
 			sigAlarma = 0;
-
-			while((todosResponden == FALSE) && !sigAlarma && (finCarrera == FALSE)) {
+			alarm(TIEMPO_ESPERA);
+			
+			while((todosResponden == FALSE) && !sigAlarma /*&& (finCarrera == FALSE)*/) {
 
 				sigsuspend(&temp);
 
@@ -545,33 +583,54 @@ int main (int argc, char *argv [], char *env []) {
 			mostrarPosiciones(estadoCaballos, posiciones, nProc, longitud);
 		}
 
+		for(i=0; i<nProc; ++i){
+			if(posiciones[i]>=longitud){
+				printf("Ha ganado el Caballo%d.\n", i); //Cambiar para empates
+			}
+		}
 		/* Liberamos memoria del padre */
 		free(posiciones);
 		free(estadoCaballos);
+		free(PIDHijo);
+
+		for(i = 0; i < nProc; i++) {
+			close(tubPadre[i][1]);
+			free(tubPadre[i]);
+			close(tubHijo[i][0]);
+			free(tubHijo[i]);
+		}
+		free(tubPadre);
+		free(tubHijo);
 	}
 	else {
+		sigfillset(&childrenMask);
+		sigdelset(&childrenMask, SIGUSR2);	// childrenMask bloqueará todas las señales excepto SIGUSR2
 
-		/* Cerramos el resto de tuberias. */
-		for(j = 0; j < nProc; j++) {
-
-			if(j != i) {
-				close(tubHijo[j][0]);
-				close(tubHijo[j][1]);
-				close(tubPadre[j][0]);
-				close(tubPadre[j][1]);
-			}
+		if(signal(SIGUSR2, capturaSIGUSR) == SIG_ERR) {
+			printf("Error en la captura.\n");
+			exit(1);
 		}
 
-		close(tubHijo[i][0]);
-		close(tubPadre[i][1]);
+		while(1){
+			sigsuspend(childrenMask);
+			
+			if(read(tubPadre[i][0], buffer, TAM)<=0){
+				printf("Datos mal enviados.\n");
+				return -1;
+			}
+			tipoTirada=atoi(buffer);
+			
+			puntos=realizarTirada(tipoTirada);
+			if(puntos==-1){
+				printf("Tirada fallida!\n");
+			}
 
-		while ((nbytes = read(tubPadre[i][0], buffer, TAM)) > 0)
-			fprintf (stdout, "Texto leido por el hijo: %s", buffer);
-		close (tubPadre[i][0]);
+			snprintf(buffer, TAM, "%d", puntos);			/* Escribir tirada en pipe, y mandar señal. */
+			write (tubHijo[i][1], buffer, strlen (buffer)+1);
 
-		snprintf(buffer, TAM, "Datos devueltos a traves de la tuberia por el proceso PID = %d\n", getpid());
-		write (tubHijo[i][1] ,buffer, strlen(buffer) + 1);
-		close (tubHijo[i][1]);
+			kill(getppid(), SIGUSR1);
+	
+		}
 	}
 
 
