@@ -13,7 +13,8 @@
 #include <fcntl.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#define TAM 16
+#include <time.h>
+#define TAM 60
 #define T_ESPERA 5
 
 typedef enum {T_NORMAL = 1, T_REMONTADORA, T_GANADORA} Tirada;
@@ -21,6 +22,7 @@ typedef enum {TIRANDO = 0, ESPERANDO, CAIDO} HorseStatus;
 typedef enum {TRUE, FALSE} BOOL;
 
 int sigAlarma = 0;
+int caida = 0;
 
 /* 
  * funcion:
@@ -73,7 +75,9 @@ void tirada(int *posiciones, pid_t *PIDHijo, int **tubPadre,
 				snprintf(buffer, TAM, "%d", T_GANADORA);			/* Escribir tirada en pipe, y mandar señal. */
 				write (tubPadre[i][1], buffer, strlen(buffer) + 1);
 
-				kill(PIDHijo[i], SIGUSR2);
+				fflush(NULL);
+
+				kill(PIDHijo[i], SIGUSR1);
 			}
 
 			else if(posiciones[i] == min) {
@@ -81,7 +85,7 @@ void tirada(int *posiciones, pid_t *PIDHijo, int **tubPadre,
 				snprintf(buffer, TAM, "%d", T_REMONTADORA);			/* Escribir tirada en pipe, y mandar señal. */
 				write (tubPadre[i][1], buffer, strlen(buffer) + 1);
 
-				kill(PIDHijo[i], SIGUSR2);
+				kill(PIDHijo[i], SIGUSR1);
 			}
 
 			else {
@@ -89,10 +93,11 @@ void tirada(int *posiciones, pid_t *PIDHijo, int **tubPadre,
 				snprintf(buffer, TAM, "%d", T_NORMAL);			/* Escribir tirada en pipe, y mandar señal. */
 				write (tubPadre[i][1], buffer, strlen (buffer)+1);
 
-				kill(PIDHijo[i], SIGUSR2);
+				kill(PIDHijo[i], SIGUSR1);
 			}
 		}
 	}
+
 	
 	return;
 }
@@ -110,55 +115,57 @@ void tirada(int *posiciones, pid_t *PIDHijo, int **tubPadre,
  * 		- tubHijo: array con las tuberias de comunicacion del hijo al padre
  * 		- nProc: numero de caballos
  */
-void makePipes(int **tubPadre, int **tubHijo, int nProc){
+void makePipes(int ***tubPadre, int ***tubHijo, int nProc){
 
 
 	int i;
 
-	tubPadre = (int**) malloc (nProc*sizeof(int*));
-	if(!tubPadre){
+	*tubPadre = (int**) malloc (nProc * sizeof(int*));
+	if(!(*tubPadre)){
 		printf("Error en la reserva de memoria.\n");
 		exit (1);
 	}
 
-	tubHijo = (int**) malloc (nProc*sizeof(int*));
-	if(!tubHijo){
+	*tubHijo = (int**) malloc (nProc * sizeof(int*));
+	if(!(*tubHijo)){
 		printf("Error en la reserva de memoria.\n");
 		exit (1);
 	}
 
-	for(i=0; i<nProc; ++i){
+	for(i=0; i<nProc; i++){
 
-		tubPadre[i]=(int*) malloc (2*sizeof(int));
-		if(!tubPadre[i]){
+		(*tubPadre)[i]=(int*) malloc (2 * sizeof(int));
+		if(!(*tubPadre)[i]){
 			printf("Error en la reserva de memoria.\n");
 			exit (1);
 		}
 
-		tubHijo[i]=(int*) malloc (2*sizeof(int));
-		if(!tubHijo[i]){
+		(*tubHijo)[i]=(int*) malloc (2 * sizeof(int));
+		if(!(*tubHijo)[i]){
 			printf("Error en la reserva de memoria.\n");
 			exit (1);
 		}
 	}
+
+
 
 	/* Creamos las tuberias para los procesos hijos.
 	   Ponemos los canales de lectura para que no sean bloqueantes. */
 	for(i = 0; i < nProc; i++){
 
-		if(pipe (tubPadre[i]) == -1) {
+		if(pipe ((*tubPadre)[i]) == -1) {
 
 			printf("No se ha creado bien la tuberia %d.\n", i);
 			exit(1);
 		}
-		fcntl(tubPadre[i][0], F_SETFL, O_NONBLOCK);
+		fcntl((*tubPadre)[i][0], F_SETFL, O_NONBLOCK);
 
-		if(pipe (tubHijo[i]) == -1) {
+		if(pipe ((*tubHijo)[i]) == -1) {
 
 			printf("No se ha creado bien la tuberia %d.\n", i);
 			exit(1);
 		}
-		fcntl(tubHijo[i][0], F_SETFL, O_NONBLOCK);
+		fcntl((*tubHijo)[i][0], F_SETFL, O_NONBLOCK);
 	}
 
 	return;
@@ -241,9 +248,10 @@ void parent_closeNonUsedPipes(int **tubPadre, int **tubHijo, int nProc) {
  * 		- estadoCaballos: array con el estado de cada caballo
  * 		- tubHijo: array con las tuberias de comunicacion del hijo al padre
  * 		- nProc: numero de procesos hijos
+ * 		- meta: longitud de la carrera
  */
 void gestionarRespuestas(int *posiciones, int *estadoCaballos, int **tubHijo,
-				int nProc) {
+				int nProc, int meta) {
 
 	int i, lectura;
 	char buffer[TAM];
@@ -258,6 +266,9 @@ void gestionarRespuestas(int *posiciones, int *estadoCaballos, int **tubHijo,
 				
 				posiciones[i] += atoi(buffer);
 				estadoCaballos[i] = ESPERANDO;
+
+				if(posiciones[i] >= meta)
+					return;
 			}
 		}
 	}
@@ -345,9 +356,9 @@ void buscarCaidas(int *estadoCaballos, int **tubHijo, int **tubPadre,
 	 * matamos enviandoles 'SIGILL' para que su proceso
 	 * asociado se encargue de liberar recursos. */
 	for(i = 0; i < nProc; i++)
-		if(estadoCaballos == TIRANDO) {
+		if(estadoCaballos[i] == TIRANDO) {
 
-			printf("El caballo %d se ha caido\n", i+1);
+			estadoCaballos[i] = CAIDO;
 
 			close(tubPadre[i][1]);
 			close(tubHijo[i][0]);
@@ -399,12 +410,112 @@ void mostrarPosiciones(int *estadoCaballos, int *posiciones, int nProc, int meta
 
 	for(i = 0; i < nProc; i++)
 		if(estadoCaballos[i] != CAIDO)
-			printf("%d\t", posiciones[i]);
+			printf("%d\t\t", posiciones[i]);
 		else if(posiciones[i] < meta)
 			printf("-\t");
 
+	printf("\n");
+
 	return;
 }
+
+
+/*
+ * funcion:
+ * 		tirarDado
+ * descripcion:
+ * 		simula el tipo de tirada de un caballo
+ *
+ * parametros:
+ * 		- tipoTirada: indica el tipo de tirada mediante
+ * 				la enumeracion de tipo 'Tirada'
+ *
+ * retorno:
+ * 		el resultado de la tirada
+ */
+int tirarDado(int tipoTirada) {
+
+	int resultado;
+
+	switch(tipoTirada) {
+
+		case T_NORMAL:
+
+			resultado = (rand() % 6) + 1;
+			break;
+
+		case T_GANADORA:
+
+			resultado = (rand() % 7) + 1;
+			break;
+
+		default:
+
+			resultado = (rand() % 6) + 1;
+			resultado += (rand() % 6) + 1;
+			break;
+	}
+
+	return resultado;
+}
+
+
+/*
+ * funcion:
+ * 		retirarCaballo
+ * descripcion:
+ * 		funcion encargada de liberar la memoria usada por un caballo,
+ * 		y de la terminacion del proceso
+ *
+ * parametros:
+ * 		- tubPadre: array con las tuberias de comunicacion del padre al hijo
+ * 		- tubHijo: array con las tuberias de comunicacion del hijo al padre
+ * 		- PIDHijo: array con los PID de los procesos hijos
+ * 		- nProc: numero de procesos hijos
+ */
+void retirarCaballo(int **tubPadre, int **tubHijo, int *PIDHijo, int nProc) {
+
+	int i;
+
+	free(PIDHijo);
+
+	for (i = 0; i < nProc; i++) {
+		
+		free(tubPadre[i]);
+		free(tubHijo[i]);
+	}
+
+	free(tubPadre);
+	free(tubHijo);
+
+	exit(1);
+
+	return;
+}
+
+
+/*
+ * funcion:
+ * 		sacarCaballos
+ * descripcion:
+ * 		funcion encargada de mandar a los caballos la senal de finalizar
+ *
+ * parametros:
+ * 		- PIDHijo: array con los PID de los procesos hijos
+ * 		- nProc: numero de procesos hijos
+ * 		- estadoCaballos: array con el estado de cada caballo
+ */
+void sacarCaballos(int *PIDHijo, int nProc, int *estadoCaballos) {
+
+	int i;
+
+	for(i = 0; i < nProc; i++)
+		if(estadoCaballos[i] != CAIDO)
+			kill(PIDHijo[i], SIGILL);
+
+	return;
+}
+
 
 /*
  * funcion:
@@ -414,6 +525,21 @@ void mostrarPosiciones(int *estadoCaballos, int *posiciones, int nProc, int meta
  */
 void capturaUser1(int sennal) {
 
+	return;
+}
+
+
+/*
+ * funcion:
+ * 		capturaCaida
+ * descripcion:
+ * 		funcion encargada de que hacer tras la captura de la sennal
+ * 		que indica la caida de un caballo.
+ */
+void capturaCaida(int sennal) {
+
+	caida = 1;
+	
 	return;
 }
 
@@ -432,15 +558,18 @@ void capturaAlarma(int sennal) {
 
 
 
+
+
 int main (int argc, char *argv [], char *env []) {
 	
 	char buffer[TAM];
-	int nbytes, **tubPadre=NULL, **tubHijo=NULL, i, j, flag = 0;
+	int  **tubPadre=NULL, **tubHijo=NULL, i, flag = 0;
 	int *posiciones, *estadoCaballos;
+	int tipoTirada, resulDado;
 	BOOL finCarrera = FALSE, todosResponden = FALSE;
 	pid_t *PIDHijo;
 	int nProc=0, longitud=0;
-	sigset_t mask, temp, oldMask;
+	sigset_t mask, temp, sonTemp, oldMask;
 
 	if(argc!=3){
 		printf("Numero incorrecto de argumentos.\n");
@@ -450,11 +579,20 @@ int main (int argc, char *argv [], char *env []) {
 	/* Creamos las mascaras */
 	sigemptyset(&mask);
 	sigaddset(&mask, SIGUSR1);
+	sigaddset(&mask, SIGILL);
+	sigaddset(&mask, SIGALRM);
 	sigprocmask(SIG_SETMASK, &mask, &oldMask);
 
 	sigfillset(&temp);
 	sigdelset(&temp, SIGUSR1);
+	sigdelset(&temp, SIGILL);
 	sigdelset(&temp, SIGALRM);
+
+	sigfillset(&sonTemp);
+	sigdelset(&sonTemp, SIGUSR1);
+	sigdelset(&sonTemp, SIGILL);
+
+
 
 
 	/* Determinamos la gestion de señales. */
@@ -464,17 +602,33 @@ int main (int argc, char *argv [], char *env []) {
 		exit(1);
 	}
 
+	if(signal(SIGILL, capturaCaida) == SIG_ERR) {
+
+		printf("Error en la captura.\n");
+		exit(1);
+	}
+
+	if(signal(SIGALRM, capturaAlarma) == SIG_ERR) {
+
+		printf("Error en la captura.\n");
+		exit(1);
+	}
+
+
 
 	nProc = atoi(argv[1]);
 	longitud = atoi(argv[2]);
 
-	makePipes(tubPadre, tubHijo, nProc);
+	makePipes(&tubPadre, &tubHijo, nProc);
 
 	PIDHijo = (pid_t*) malloc (nProc*sizeof(pid_t));
 	if(!PIDHijo){
 		printf("Error en la reserva de memoria.\n");
 		exit (1);
 	}
+
+
+
 
 	/* Creamos los procesos hijos. */
 	for (i = 0; i < nProc; i++) {
@@ -500,8 +654,7 @@ int main (int argc, char *argv [], char *env []) {
 		if(flag == 1)
 			break;
 	}
-
-	parent_closeNonUsedPipes(tubPadre, tubHijo, nProc);
+	
 		
 
 	/* Hasta aqui ya tenemos creados todos los procesos hijos y sus tuberías */
@@ -510,6 +663,8 @@ int main (int argc, char *argv [], char *env []) {
 
 	/* Ejecucion del padre. */	
 	if(flag != 1) {
+
+		parent_closeNonUsedPipes(tubPadre, tubHijo, nProc);
 
 		for(i = 0; i < nProc; i++)
 			printf("Caballo%d\t", i);
@@ -524,17 +679,21 @@ int main (int argc, char *argv [], char *env []) {
 			ponerEnModoTirando(estadoCaballos, nProc);
 			tirada(posiciones, PIDHijo, tubPadre, tubHijo, nProc, estadoCaballos);
 
+			
+
 			alarm(T_ESPERA);
 			sigAlarma = 0;
+			todosResponden = FALSE;
 
 			while((todosResponden == FALSE) && !sigAlarma && (finCarrera == FALSE)) {
 
 				sigsuspend(&temp);
 
+
 				if(sigAlarma)	/* Cuando llega la alarma no leemos las tuberias. */
 					break;
 
-				gestionarRespuestas(posiciones, estadoCaballos, tubHijo, nProc);
+				gestionarRespuestas(posiciones, estadoCaballos, tubHijo, nProc, longitud);
 				todosResponden = finDeTiradas(estadoCaballos, nProc);
 				finCarrera = comprobarFinCarrera(estadoCaballos, posiciones, nProc, longitud);
 			}
@@ -545,33 +704,36 @@ int main (int argc, char *argv [], char *env []) {
 			mostrarPosiciones(estadoCaballos, posiciones, nProc, longitud);
 		}
 
+		sacarCaballos(PIDHijo, nProc, estadoCaballos);
+
 		/* Liberamos memoria del padre */
 		free(posiciones);
 		free(estadoCaballos);
 	}
+
+	/* Procesos hijos (caballos) */
 	else {
 
-		/* Cerramos el resto de tuberias. */
-		for(j = 0; j < nProc; j++) {
+		srand(getpid());
 
-			if(j != i) {
-				close(tubHijo[j][0]);
-				close(tubHijo[j][1]);
-				close(tubPadre[j][0]);
-				close(tubPadre[j][1]);
-			}
+		/* El hijo tira siempre hasta que el padre le manda parar. */
+		while(1) {
+
+			sigsuspend(&sonTemp);
+
+			if(caida)
+				retirarCaballo(tubPadre, tubHijo, PIDHijo, nProc);
+
+			read(tubPadre[i][0], buffer, TAM);
+			tipoTirada = atoi(buffer);
+
+			resulDado = tirarDado(tipoTirada);
+			snprintf(buffer, TAM, "%d", resulDado);
+			write (tubHijo[i][1], buffer, strlen(buffer) + 1);
+
+			kill(getppid(), SIGUSR1);
 		}
 
-		close(tubHijo[i][0]);
-		close(tubPadre[i][1]);
-
-		while ((nbytes = read(tubPadre[i][0], buffer, TAM)) > 0)
-			fprintf (stdout, "Texto leido por el hijo: %s", buffer);
-		close (tubPadre[i][0]);
-
-		snprintf(buffer, TAM, "Datos devueltos a traves de la tuberia por el proceso PID = %d\n", getpid());
-		write (tubHijo[i][1] ,buffer, strlen(buffer) + 1);
-		close (tubHijo[i][1]);
 	}
 
 
