@@ -245,34 +245,25 @@ int buscar(int *array, int elemento, int size) {
 void retirarCaballos(int *shared, int numCaballos, int semLectura,
 					int semEscritura, int shm) {
 
-	int i, sizeIntPIDs = numCaballos;
-	int *intPIDs = (int *) calloc(numCaballos, sizeof(int));
-	int encontrado = 0;
+	int i;
+	int PID,status;
 	struct shmid_ds infoSHM;
 
 	shmctl(shm, IPC_STAT, &infoSHM);
 
-	while(infoSHM.shm_nattch > 1) {
-		for(i = 0; i < numCaballos; i++) {
+	for(i = 0; i < numCaballos; i++) {
 
-			downSimetrico(semLectura, 0);
-			if(pid(shared, i, numCaballos) != -1) {
+		downSimetrico(semLectura, 0);
+		if(pid(shared, i, numCaballos) != -1) {
 
-				encontrado = buscar(intPIDs, pid(shared, i, numCaballos), sizeIntPIDs);
-
-				if(encontrado == 0) {
-					sizeIntPIDs = insertar(&intPIDs, pid(shared, i, numCaballos), sizeIntPIDs);
-					kill(pid(shared, i, numCaballos), SIGINT);
-				}
-			}
-			upSimetrico(semLectura, 0);
+			PID = pid(shared, i, numCaballos);
+			kill(PID, SIGINT);
+			waitpid(PID, &status, 0);
 		}
-
-		shmctl(shm, IPC_STAT, &infoSHM);
+		upSimetrico(semLectura, 0);
 	}
 
-
-	free(intPIDs);
+	shmctl(shm, IPC_STAT, &infoSHM);
 
 	return;
 }
@@ -286,10 +277,14 @@ void finSimulador(int semEntrada, int semLectura, int semEscritura,
 				int semPrincipio, int *shared, int shm, 
 				int numCaballos) {
 
+	struct shmid_ds infoSHM;
+
 	/* Retiramos todos los caballos */
 	retirarCaballos(shared, numCaballos, semLectura, semEscritura, shm);
+	shmctl(shm, IPC_STAT, &infoSHM);
+	if(infoSHM.shm_nattch > 1)
+		return;
 
-	
 
 	/* Eliminamos memoria compartida */
 	shmdt(shared);
@@ -356,7 +351,7 @@ void ejecutaPrincipal(int numCaballos, int longitud, int semEntrada,
 
 
 	/* Esperamos a que entren caballos. */
-	alarm(7);
+	alarm(5);
 	pause();
 
 	/* Tras la entrada, ponemos los semPadre a 0 */
@@ -369,7 +364,7 @@ void ejecutaPrincipal(int numCaballos, int longitud, int semEntrada,
 
 	while(1) {
 
-		sleep(1);
+		//sleep(1);
 		alarm(5); /* Ponemos la alarma */
 
 		/* Mostrar resultados */
@@ -388,9 +383,12 @@ void ejecutaPrincipal(int numCaballos, int longitud, int semEntrada,
 			if(ganador != -1)
 				printf("\nEl caballo %d ha ganado.\n", ganador);
 
-			finSimulador(semEntrada, semLectura, semEscritura, 
-						semPadre, semLeido, semHijos,
-						semPrincipio, shared, shm, numCaballos);
+			/* Hasta que no se retiren todos los caballos no salimos. */
+			while(1) {
+				finSimulador(semEntrada, semLectura, semEscritura, 
+							semPadre, semLeido, semHijos,
+							semPrincipio, shared, shm, numCaballos);
+			}
 		}
 
 
