@@ -1,0 +1,33 @@
+-- Ej 1 --
+La diferencia es que al pasarle una clave constante, en caso de que ya se haya creado una cola de mensajes con la misma clave, no creamos otra nueva. Mientras que si le pasamos el valor IPC_PRIVATE, se crea una nueva cola de mensajes directamente.
+
+-- Ej 2 --
+El programa crea una cola de mensajes, y luego se encarga de enviar un mensaje a dicha cola. Para ello primero creamos una estructura de tipo msgbuf a la que se le asocia el tipo de mensaje y el propio mensaje. Una vez a finalizado el programa, al ejecutar 'ipcs -q' podemos observar que hay una entrada que so corresponde a la cola de mensajes creada. En dicha entrada también se especifican los bytes utilizados (que en este caso serán los 12Bytes usados por la cadena 'Hola mundo!'), así como el número de mensajes (en este caso 1).
+
+-- Ej 4 --
+Para conseguir el bloqueo hay que obtener el número máximo de bytes que admite la cola del sistema que hemos creado. Para ello llamamos a la función 'msgctl(queue, IPC_STAT, &buf)' para obtener la información de los atributos de la cola creada, y después obtenemos el campo mencionado con el atributo 'buf.msg_qbytes'. Una vez obtenido el atributo, calculamos el número de iteraciones necesarias para rebasar dicho límite. El proceso se bloqueará porque al intentar enviar el mensaje, nos encontramos con que la cola no puede almacenar más mensajes, y según el manual en estas situacónes el comportamiento por defecto es el bloqueo del proceso.
+
+-- Ej 5 --
+- Lo que sucede es que una vez ejecutamos el programa 4, el procesos se bloquea porque la cola no tiene memoria suficiente. Si despues llamamos al programa 5, entonces este programa irá sacando todos los mensajes disponibles en la la cola hasta que esta se quede vacía. Una vez saca todos los mensajes y deja la cola vacía, el proceso se quedará bloqueado.
+- Incluso si cambiamos el valor de la variable LOOP esto seguirá sucediendo, porque tras cada vez en la que el programa 4 envia los mensajes, el programa 5 se encarga de sacarlos al llamar a la función de recibir. De modo que el programa 4 terminará de enviar todos sus mensajes y el programa 5 se quedará de nuevo bloqueado en cuanto esto suceda (pues la cola estará vacía).
+
+-- Ej 6 --
+Aparece 'msgrcv: Identifier removed', y el programa termina.
+
+-- Ej 7 --
+2) En el ejercicio2 no afecta para nada porque solo enviamos un mensaje que entra perfectamente en la cola de mensajes, y por tanto no existe posibilidad de bloqueo.
+4) En el ejercicio4 el programa da un error cuando intentamos enviar un mensaje y tenemos la cola saturada. En dicho momento se lanza el mensaje de error 'msgsnd: Resource temporarily unavailable'.
+5) En el ejercicio5, al especificar la bandera en la funciín msgrcv(), esta devuelve un error y mostramos al mostrarlo por pantalla con 'perror()' obtenemos: 'msgrcv: No message of desired type'.i
+
+-- Ej 8 --
+- Al ejecutar primero el 8B, el programa se queda colgado hasta que ejecutemos el 8A y mande algún mensaje. A medida que el 8A va enviando los mensajes, el 8B los recive y los muestra por pantalla. Pero cuando el 8A termina de enviar los mensajes, el 8B se queda colgado a la espera de recivir uno nuevo.
+- Cuando ejecutamos el 8A pasando como argumento 1, y el 8B pasándole como argumento 2, lo que sucede es que el 8B se queda a la espera de recibir mensajes de tipo 2. Pero como el 8A está enviando mensajes de tipo 1, el proceso que ha lanzado 8B se queda colgado y no saca ningún mensaje por pantalla, dado que no le llega ninguno del tipo solicitado.
+
+-- Ej 9 --
+Tras ejecutar las 3 terminales, al ejecutar el programa 8B con argumento -2, lo que se muestra por pantalla son los mensajes de tipo 1 y 2 que han mandado los repectivos procesos lanzados anteriormente. Esto se debe a que si en el argumento de la función msgrcv() en el que especificamos el tipo de mensaje ponemos un valor negativo, la función sacará de la cola aquellos cuyo tipo sean en valor absoluto menores o iguales que el número negativo especificado. De este modo no aparecen los mensajes de tipo 3 que mandó uno de los procesos.
+
+-- Ej 10 --
+Lo que sucede es que el tamaño del mensaje que esperamos recibir es de 15B, sin embargo la cadena que enviamos a la cola de mensajes sobrepasa dicho tamaño. De este modo, cuando la función msgrcv() intenta sacar de la cola uno de los mensajes, sale con un error en el que se notifica que el argumento es demasiado grande. Tras encontrarse con este error, nuestro porgrama sale y en la cola de mensajes todavía esta el mensaje mandado, ya que si msgrcv() da un error por un argumento demasiado largo, no saca el mensaje de la cola.
+
+-- Ej 11 --
+Al añadir la bandera 'MSG_NOERROR', la función msgrcv() saca de la cola los mensajes, pero estos se sacan truncados para que que entren en las estructuras pasadas por argumento a la función.
