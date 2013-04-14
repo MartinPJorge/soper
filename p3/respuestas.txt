@@ -34,3 +34,35 @@ Lo que sucede es que el tamaño del mensaje que esperamos recibir es de 15B, sin
 
 -- Ej 11 --
 Al añadir la bandera 'MSG_NOERROR', la función msgrcv() saca de la cola los mensajes, pero estos se sacan truncados para que que entren en las estructuras pasadas por argumento a la función.
+
+-- Ej 12 --
+La función devolverá 0 en caso de que se haya ejecutado correctamente, y EAGAIN o EINVAL en caso de que se produzca un error. El primer valor dice que la función no se ha podido ejecutar correctamente porque en el sistema se han agotado los recursos necesarios para la creación del hilo, mientars que el otro valor indica que la variable pasada al argumento 'attr' no es válido.
+
+-- Ej 14 --
+Si que se terminan todos lo hilos, ya que en la terminal apreciamos que se imprimen los PIDs de cada hilo. Además esto es posible debido a que con 'pthread_exit()' terminamos el hilo, y por tanto aunque termine antes el hilo ppal. hasta que no terminan el resto de hilos, no se termina el proceso.
+
+-- Ej 15 --
+Con pthread_join, esperamos a que termine cada hilo creado antes de que se siga ejecutando el hilo principal.
+Sin embargo, con pthread_tryjoin_np, la espera no es bloqueante, por lo que el hilo principal continúa su ejecución normal y termina con exit(0) antes de que los demás hilos creados lleguen a imprimir su pid por pantalla.
+
+-- Ej 16 --
+- Entre los hilos, tenemos compartidas todas las variables declaradas al comienzo del main, porque estas variables serán comunes a todos los hilos del proceso. Además las variables globales y estáticas también serán compartidas.
+- A las variables estáticas, ya que estas tienen una dirección física fija a lo largo de la ejecución del proceso, y por tanto son las mismas en las sucesivas llamadas a la rutina en las que se han declarado.
+
+-- Ej 17 --
+Protegemos la espera (usleep) y el printf que imprime los mensajes mediante un semáforo que hemos creado e inicializado a 1 en el hilo principal. Protegiendo esta región crítica, nos aseguramos de que no se impriman los mensajes a la vez, dando resultados inesperados, ya que cuando un hilo quiera entrar a la sección crítica, tendrá que hacer un down del semáforo, y hasta que no imprima su mensaje, el segundo hilo habrá llegado y estará todavía en el down, esperando a que el primer hilo salga de la sección crítica (up del semáforo).
+
+-- Ej 18 --
+En este programa nos piden que cada hilo devuelva al terminar una cadena de caracteres con un saludo y su TID. Para hacerlo, reservamos memoria dinámica para una cadena de caracteres, la rellenamos con la frase que nos piden, y a continuación llamamos a pthread_exit pasándosela como argumento para que el hilo termine su ejecución. Mientras tanto, en el hilo principal, habremos hecho pthread_join pasándole como argumento el TID del hilo secundario, de manera que estaremos esperando a que termine para guardar su retorno (la cadena de caracteres) en la variable retorno. Por último, imprimimos el mensaje (guardado en retorno) como cadena de caracteres y liberamos retorno.
+Al crear un hilo, éste pasará a ejecutar una función que recibe como parámetro un void* y devuelve un void*. Para devolver una cadena de caracteres al hilo principal, lo que hacemos es crearla y pasársela a pthread_exit como parámetro, haciéndole un casting a void*. Al hacer pthread_join, lo que haremos será pasarle un void** (en nuestro programa, &retorno), donde se guardará el retorno del hilo secundario. Para imprimir el retorno, como la variable retorno es un void*, le haremos un casting a char* para que nos permita tratarla como una cadena de caracteres a la hora de hacer el printf. 
+Las funciones de los hilo, al recibir como parámetro un void* y pthread_exit, al devolver al hilo principal un void* nos otorgan una gran flexibilidad, ya que esos void*, interpretados correctamente, nos permiten pasar cualquier tipo de dato entre dos hilos.
+
+-- Ej 19 --
+Ahora, nada más crear un hilo con pthread_create, lo cancelaremos a continuación con pthread_cancel (pasándole como parámetro el TID del hilo a cancelar). Para comprobar que efectivamente el hilo ha sido cancelado, llamamos a pthread_join (pasándole el tid y un void** retorno) y comprobamos que retorno == PTHREAD_CANCELED, si no lo fuese, la cancelación del hilo habría fallado.
+En el hilo secundario, además, llamaremos a pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);. Con esta sentencia, estamos diciendo que el hilo pueda detenerse de manera asíncrona (sin tener que esperar al reloj para detenerse, haciéndolo cuando le llegue el pthread_cancel).
+
+-- Ej 20 --
+Creamos dos funciones capturadoras de señales, que imprimirán mensajes de aviso para identificar al hilo que ha capturado la señal. En el hilo principal, activamos la captura de SIGINT, creamos un hilo y entramos en pausa. En el hilo secundario, activamos la captura de SIGINT (con una función capturadora distinta de la anterior) y entramos en pausa. Además, para cuando salgamos de la pausa, imprimiremos mensajes de aviso con ambos hilos.
+Al ejecutar y pulsar Ctrl+C, la función que captura SIGINT resulta ser la del hilo secundario. Curiosamente, el proceso que sale de la pausa, es el principal, en lugar del secundario, que es el que la ha capturado.
+Si no hacemos pthread_join, al pulsar Ctrl+C, el hilo secundario imprimirá su mensaje y el hilo principal saldrá de la espera y terminará. Si volvemos a pulsar Ctrl+C, el hilo secundario volverá a imprimir su mensaje (con un TID diferente¿?) y saldrá del pause y terminará.
+Por el contrario, si hacemos pthread_join, al pulsar Ctrl+C el hilo secundario imprimirá su mensaje y el hilo principal saldrá de la espera, pero no terminará, sino que se quedará esperando a que el hilo secundario termine. A partir de este momento, entramos en un bucle infinito, ya que siempre que pulsemos Ctrl+C, el hilo secundario imprimirá el mismo mensaje que al principio y volverá a la pausa, no terminando nunca (y no permitiendo que el hilo principal termine).
