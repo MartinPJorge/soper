@@ -18,7 +18,6 @@ void captura2(int signal){
 }
 
 void *funcion_hilo(void *id) {
-    static int cont = 0;
 
     if (signal (SIGINT, captura2) == SIG_ERR) {   
         puts ("Error en la captura");

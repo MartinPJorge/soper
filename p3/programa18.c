@@ -57,7 +57,7 @@ void *funcion_hilo(void *id) {
     printf("[Hilo %d]: %s (cont=%d)\n", tid, mensajes_globales[tid], ++cont);
     up(semID, 0);
 
-    sprintf(saludo, "%s%u", "Hola, soy el hilo con TID = ", (unsigned int) pthread_self());
+    sprintf(saludo, "%s%li", "Hola, soy el hilo con TID = ", (unsigned long int) pthread_self());
 
     pthread_exit((void*) saludo);
 }
@@ -68,7 +68,6 @@ int main() {
     pthread_t tid;
     int semID;
     void* retorno;
-    unsigned short val=-1;
 
     
     semID = semget(CLAVE_SEMAFORO, 1, IPC_CREAT | IPC_EXCL | SHM_R | SHM_W);

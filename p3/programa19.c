@@ -18,21 +18,6 @@
 
 char **mensajes_globales;
 
-int down(int id, int num_sem) {
-    struct sembuf sops;
-    sops.sem_num = (short) num_sem;
-    sops.sem_op = -1;
-    sops.sem_flg = 0 | SEM_UNDO;
-    return semop(id, &sops, NUM_SEMAFOROS);
-}
-
-int up(int id, int num_sem) {
-    struct sembuf sops;
-    sops.sem_num = (short) num_sem;
-    sops.sem_op = 1;
-    sops.sem_flg = 0;
-    return semop(id, &sops, NUM_SEMAFOROS);
-}
 
 void *funcion_hilo(void *id) {
     int tid;
@@ -48,13 +33,12 @@ void *funcion_hilo(void *id) {
     
     tid = *((int *) id);
     val = semctl(semID, 0, GETVAL, &val);
-    
-    down(semID, 0);
-    usleep(TIME_SLEEP);
-    printf("[Hilo %d]: %s (cont=%d)\n", tid, mensajes_globales[tid], ++cont);
-    up(semID, 0);
 
-    sprintf(saludo, "%s%u", "Hola, soy el hilo con TID = ", (unsigned int) pthread_self());
+
+    usleep(0);
+    printf("[Hilo %d]: %s (cont=%d)\n", tid, mensajes_globales[tid], ++cont);
+    sprintf(saludo, "%s%li", "Hola, soy el hilo con TID = ", (unsigned long int) pthread_self());
+
 
     pthread_exit((void*) saludo);
 }
@@ -65,7 +49,6 @@ int main() {
     pthread_t tid;
     int semID;
     void* retorno;
-    unsigned short val=-1;
     
     
     semID = semget(CLAVE_SEMAFORO, 1, IPC_CREAT | IPC_EXCL | SHM_R | SHM_W);
@@ -103,9 +86,7 @@ int main() {
         
     }
     
-    
     semctl(semID, 0, IPC_RMID, NULL);
-
 
     pthread_exit(NULL);
 }
