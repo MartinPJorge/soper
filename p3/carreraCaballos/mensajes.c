@@ -4,6 +4,11 @@ int* compartido;
 char msg_buffer[TAM_MSG_BUFF];
 int colaMensajes;
 
+
+/*
+ * Descripcion: inicializa la cola de mensajes que establece la 
+ * comunicacion entre los caballos y el proceso ppal.
+ */
 void iniColaMsg(){
     colaMensajes = msgget(CLAVE_MENSAJES, IPC_CREAT | IPC_EXCL | SHM_R | SHM_W);
     if (colaMensajes == -1) {
@@ -17,6 +22,10 @@ void iniColaMsg(){
 }
 
 
+/*
+ * Descripcion: elimina la cola de mensajes que establece la 
+ * comunicacion entre los caballos y el proceso ppal.
+ */
 void delColaMsg(){
     if(msgctl(colaMensajes, IPC_RMID, NULL)==-1){
         perror("msgctl");
@@ -34,63 +43,50 @@ int procesarEnvio() {
     char *comando, *cab = NULL, *n = NULL;
     struct msgbuf buffer;
 
-
+    /* Todo comando tiene al menos 3 caracteres */
     if (strlen(instruccion) >= 3) {
 
-        if (!strcmp(instruccion, "Mostrar\n")) {
+        if (!strcmp(instruccion, "mostrar\n")) {
             return 1;
         }
 
+        /* Obtenemos el comando */
         p = strtok(instruccion, " ");
         if (p == NULL) {
             printf("Comando no válido.\n");
-            printf("Aq1\n");
             return 0;
         }
         comando = strdup(p);
 
-
+        /* Obtenemos el caballo */
         p = strtok(NULL, " ");
         if (p == NULL) {
             
             printf("Comando no válido.\n");
-            printf("Aq2\n");
             return 0;
         }
         cab = strdup(p);
 
-        printf("%s\n", cab);
-        fflush(NULL);
 
+        /* Obtenemos el campo n */
         if ((p = strtok(NULL, " "))!=NULL)
             n = strdup(p);
 
-        buffer.type = atoi(cab) + 1;
 
-        
-        /*  ------ IVAN ------
+        /* Enviamos el mensaje */
+        buffer.type = atoi(cab) + 1;
         strcpy(buffer.msg, comando);
         if (n != NULL) {
             sprintf(buffer.msg, "%s %d", comando, atoi(n));
-        }*/
-
-        if(n == NULL)
-            sprintf(buffer.msg, "%s %d", comando, atoi(cab));
-        else
-            sprintf(buffer.msg, "%s %d %d", comando, atoi(cab), atoi(n));
-
-
+        }
         if (msgsnd(colaMensajes, &buffer, strlen(buffer.msg) + 1, 0) == -1) {
             perror("msgsnd");
             exit(1);
         }
+    }
 
-        
-
-
-    } else {
+    else {
         printf("Comando no válido.\n");
-        printf("Aq3\n");
     }
     return 0;
 }
@@ -107,10 +103,7 @@ void *funcion_hilo(void *arg) {
     if(fgets(tmp, TAM_MSG_BUFF, stdin) == NULL) {
         perror("ferror");
     }
-    //gets(tmp);
-    //scanf("%s", tmp);
-    //scanf ("%[^\n]%*c", tmp);
-    //scanf("%[^\n]s",tmp);
+
     fflush(NULL);
 
     strcpy(msg_buffer, tmp);
@@ -125,7 +118,6 @@ void *funcion_hilo_respuesta(void *arg) {
     struct msgbuf buffer;
     
     ssize_t ret = msgrcv(colaMensajes, &buffer, 20, TIPO_MSG_PADRE, 0);
-    printf("mensaje recibido\n");
     if (ret == -1 && errno == ENOMSG) {
         return 0;
     } else if (ret == -1) {
@@ -134,7 +126,6 @@ void *funcion_hilo_respuesta(void *arg) {
     }
 
     printf("%s\n", buffer.msg);
-    //printf("Salgo del printf()\n");
 
     pthread_exit(NULL);
 }
@@ -154,7 +145,6 @@ int comprobarComando(pthread_t* tid_command, pthread_t* tid_resp, int numCaballo
     int ret = 0;
 
     int retKill = pthread_kill(*tid_command, 0);
-    //printf("El kill devuelve: %d\n", retKill);
 
     if (retKill != 0) {
         pthread_join(*tid_command, NULL);
@@ -176,6 +166,7 @@ int comprobarComando(pthread_t* tid_command, pthread_t* tid_resp, int numCaballo
  * 	- 0 : fuera de la función, el caballo hará la tirada correspondiente.
  *	- 1 : fuera de la función, el caballo hará una tirada mitad en lugar de la correspondiente.
  *	- 2 : fuera de la función, el caballo hará una tirada doble en lugar de la correspondiente.
+ *  - 3 : fuera de la función, el caballo invocará a sigInt
  */
 int mirarMensajesCaballo(int indexArray, int *bloqueado, int semEscritura, int numCaballos) {
     struct msgbuf buffer;
@@ -184,17 +175,14 @@ int mirarMensajesCaballo(int indexArray, int *bloqueado, int semEscritura, int n
     int pos, ret;
 
     ssize_t msgret = msgrcv(colaMensajes, &buffer, 20, indexArray + 1, IPC_NOWAIT | MSG_NOERROR);
-    //printf("El caballo recibe mensaje de tipo: %d\n", indexArray + 1);
 
     if (msgret == -1 && errno == ENOMSG) {
         return 0;
     } else if (msgret == -1) {
         perror("msgrcv");
-        printf("Tam. buffer: %d\n", (int)strlen(buffer.msg));
         exit(1);
     }
 
-    //printf("El caballo recibe mensaje: %s\n", buffer.msg);
 
     p = strtok(buffer.msg, " ");
     if (p == NULL) {
@@ -203,19 +191,20 @@ int mirarMensajesCaballo(int indexArray, int *bloqueado, int semEscritura, int n
 
     /* Interpretamos el mensaje recibido */
     if (!strcmp(p, "parar")) {
-        *bloqueado = -1;printf("Seccion0\n");
+        *bloqueado = -1;
         ret = 0;
     } else if (!strcmp(p, "cont")) {
-        *bloqueado = 0;printf("Seccion1\n");
+        *bloqueado = 0;
         ret = 0;
     } else if (!strcmp(p, "doble")) {
-        ret = 2;printf("Seccion3\n");
+        ret = 2;
     } else if (!strcmp(p, "mitad")) {
-        ret = 1;printf("Seccion4\n");
+        ret = 1;
     } else if (!strcmp(p, "matar")) {
-        kill(pid(compartido, indexArray, numCaballos), SIGINT);printf("Seccion5\n");
+        //kill(pid(compartido, indexArray, numCaballos), SIGINT);
+        ret = 3;
     } else if (!strcmp(p, "mover")) {
-        p = strtok(buffer.msg, " ");printf("Seccion6\n");
+        p = strtok(NULL, " ");
         if (p == NULL) {
             return 0;
         }
@@ -226,15 +215,18 @@ int mirarMensajesCaballo(int indexArray, int *bloqueado, int semEscritura, int n
             upSimetrico(semEscritura, 0);
         }
         ret = 0;
-    } else if (!strcmp(p, "bloquear")) {
-        p = strtok(buffer.msg, " ");printf("Seccion7\n");
+    } 
+
+    else if (!strcmp(p, "bloquear")) {
+        p = strtok(NULL, " ");
         if (p == NULL) {
             return 0;
         }
         *bloqueado = atoi(p);
         ret = 0;
-    } else {
-printf("Seccion8\n");
+    } 
+
+    else {
         /*Comando inválido, enviamos mensaje informativo*/
         strcpy(respuesta.msg, "Comando no valido.\n");
         respuesta.type = (long) TIPO_MSG_PADRE;
@@ -245,7 +237,6 @@ printf("Seccion8\n");
         return 0;
     }
 
-    printf("Seccion9\n");
 
     /* Avisamos al padre de que hemos recibido el mensaje correctamente */
     strcpy(respuesta.msg, "Ok!\n");
@@ -277,4 +268,14 @@ int tiradaComando(int tipoTirada) {
         tirada += (rand() % 6) + 1;
     }
     return tirada;
+}
+
+
+/*
+ * Descripcion: se encarga de mover el caballo pasado por 
+ * argumento a la posicion especificada.
+ */
+void mover(int caballo, int pos) {
+
+    
 }

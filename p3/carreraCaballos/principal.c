@@ -44,7 +44,6 @@ int mostrarResultados(int *shared, int numCaballos, int longitud,
                 printf("%d\t", posicion(shared, i, numCaballos));
 
         printf("\n");
-        //fflush(NULL);
     }
 
     /* Vemos si hay algun ganador */
@@ -362,7 +361,6 @@ void ejecutaPrincipal(int numCaballos, int longitud, int semEntrada,
 
 
     mostrarCabecera(numCaballos);
-    //fflush(NULL);
 
 
     /*Creamos el hilo lector de comandos*/
@@ -381,7 +379,6 @@ void ejecutaPrincipal(int numCaballos, int longitud, int semEntrada,
         upSimetrico(semLectura, 0);
         
 
-        //fflush(NULL);
 
         if ((ganador != -1) || interrupcion) {
 
@@ -396,7 +393,6 @@ void ejecutaPrincipal(int numCaballos, int longitud, int semEntrada,
                     semPrincipio, shared, shm, numCaballos);
         }
 
-        //printf("El padre sale del bloqueo\n");
 
         upTodos(shared, semHijos, numCaballos);
         downTodos(shared, semPadre, numCaballos, semLectura);

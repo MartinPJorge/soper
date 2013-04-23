@@ -7,7 +7,7 @@ FLAGS =  -c -Wall
 all:	ejFinal
 
 clean:
-	@rm -f *.o core ejFinal
+	@rm -f *.o core ejFinal *~
 
 
 ejFinal:	main.o ini.o caballo.o principal.o sistema.o mensajes.o

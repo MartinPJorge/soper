@@ -70,21 +70,18 @@ int tirar(int indexArray, int *shared, int numCaballos) {
     int resultado = 0;
     int puestoActual = puesto(shared, indexArray, numCaballos);
 
-/*
-    corriendo = caballosCorriendo(shared, numCaballos);
-*/
-
     /* Tirada ganadora */
     if (puestoActual == 1)
         resultado = (rand() % 7) + 1;
 
-        /* Tirada remontadora */
+    /* Tirada remontadora */
     else if (puestoActual == numCaballos) {
 
         resultado += (rand() % 6) + 1;
         resultado += (rand() % 6) + 1;
     }
-        /* Tirada normal */
+
+    /* Tirada normal */
     else
         resultado = (rand() % 6) + 1;
 
@@ -199,7 +196,10 @@ void sigInt(int signal) {
     upSimetrico(semEscrituraG, 0);
 
 
-    shmdt(compartido); /* Nos desenganchamos de la memoria compartida. */
+    if(shmdt(compartido)) { /* Nos desenganchamos de la memoria compartida. */
+        perror("shmdt");
+        exit(1);
+    }
 
 
     /* Levantamos los semaforos necesarios */
@@ -264,10 +264,13 @@ void ejecutaCaballo(int numCaballos, int longitud, int semEntrada,
 
 
         down(semHijos, indexArray);
-        //printf("Entra caballo2 %d\n", getpid());//fflush(NULL);
 
         /* Miramos si tenemos algún mensaje para nosotros */
         tipoTirada = mirarMensajesCaballo(indexArray, &bloqueado, semEscritura, numCaballos);
+
+        /* Miramos si han matado este caballo */
+        if(tipoTirada == 3)
+            sigInt(SIGINT);
 
 
         tirada = 0;

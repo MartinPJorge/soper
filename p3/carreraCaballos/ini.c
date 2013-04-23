@@ -35,23 +35,77 @@ int iniSemaforos(int numCaballos, int *semEntrada, int *semLectura, int *semEscr
 
 
         *semEntrada = semget(CLAVE_SEM_ENTRADA, 1, SHM_R | SHM_W);
+        if(*semEntrada == -1) {
+            perror("semget");
+            exit(1);
+        }
+
         *semLectura = semget(CLAVE_SEM_LECTURA, 1, SHM_R | SHM_W);
+        if(*semLectura == -1) {
+            perror("semget");
+            exit(1);
+        }
+
         *semEscritura = semget(CLAVE_SEM_ESCRITURA, 1, SHM_R | SHM_W);
+        if(*semEscritura == -1) {
+            perror("semget");
+            exit(1);
+        }
+
         *semPadre = semget(CLAVE_SEM_PADRE, numCaballos, SHM_R | SHM_W);
+        if(*semEscritura == -1) {
+            perror("semget");
+            exit(1);
+        }
+
         *semLeido = semget(CLAVE_SEM_LEIDO, numCaballos, SHM_R | SHM_W);
+        if(*semLeido == -1) {
+            perror("semget");
+            exit(1);
+        }
+
         *semHijos = semget(CLAVE_SEM_HIJOS, numCaballos, SHM_R | SHM_W);
+        if(*semHijos == -1) {
+            perror("semget");
+            exit(1);
+        }
 
         esPadre = 0;
     }
-        /* Padre */
+    
+    /* Padre */
     else {
 
 
         *semLectura = semget(CLAVE_SEM_LECTURA, 1, IPC_CREAT | IPC_EXCL | SHM_R | SHM_W);
+        if(*semLectura == -1) {
+            perror("semget");
+            exit(1);
+        }
+
         *semEscritura = semget(CLAVE_SEM_ESCRITURA, 1, IPC_CREAT | IPC_EXCL | SHM_R | SHM_W);
+        if(*semEscritura == -1) {
+            perror("semget");
+            exit(1);
+        }
+
         *semPadre = semget(CLAVE_SEM_PADRE, numCaballos, IPC_CREAT | IPC_EXCL | SHM_R | SHM_W);
+        if(*semPadre == -1) {
+            perror("semget");
+            exit(1);
+        }
+
         *semLeido = semget(CLAVE_SEM_LEIDO, numCaballos, IPC_CREAT | IPC_EXCL | SHM_R | SHM_W);
+        if(*semLeido == -1) {
+            perror("semget");
+            exit(1);
+        }
+
         *semHijos = semget(CLAVE_SEM_HIJOS, numCaballos, IPC_CREAT | IPC_EXCL | SHM_R | SHM_W);
+        if(*semHijos == -1) {
+            perror("semget");
+            exit(1);
+        }
 
 
         /* Inicializamos los semaforos */
@@ -103,7 +157,8 @@ int *iniMemCompartida(int numCaballos, int *semPrincipio, int *shm) {
             exit(1);
         }
     }
-        /* Padre */
+    
+    /* Padre */
     else {
         shMem = shmat(shmID, NULL, 0);
         if (shMem == NULL) {
