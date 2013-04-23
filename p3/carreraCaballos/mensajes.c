@@ -269,13 +269,3 @@ int tiradaComando(int tipoTirada) {
     }
     return tirada;
 }
-
-
-/*
- * Descripcion: se encarga de mover el caballo pasado por 
- * argumento a la posicion especificada.
- */
-void mover(int caballo, int pos) {
-
-    
-}
